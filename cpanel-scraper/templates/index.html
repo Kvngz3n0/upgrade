@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>cPanel Web Scraper & Gallery</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🕷️ Web Scraper & Gallery</h1>
+            <p>Extract and display media in beautiful gallery format</p>
+        </header>
+        
+        <main>
+            <!-- Nav Tabs -->
+            <div class="tabs">
+                <button class="tab-btn active" data-tab="basic">Basic Scrape</button>
+                <button class="tab-btn" data-tab="media">Media Search</button>
+                <button class="tab-btn" data-tab="crawl">Website Crawl</button>
+                <button class="tab-btn" data-tab="social">Social Lookup</button>
+            </div>
+            
+            <!-- Basic Scrape Tab -->
+            <section id="basic" class="tab-content active">
+                <h2>Basic Web Scraping</h2>
+                <div class="form-group">
+                    <label>URL:</label>
+                    <input type="url" id="basicUrl" placeholder="https://example.com" required>
+                </div>
+                <button onclick="scrapeBasic()" class="btn-primary">Scrape</button>
+                <div id="basicResults" class="results"></div>
+            </section>
+            
+            <!-- Media Search Tab -->
+            <section id="media" class="tab-content">
+                <h2>Media Extraction</h2>
+                <div class="form-group">
+                    <label>URL:</label>
+                    <input type="url" id="mediaUrl" placeholder="https://example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Media Types:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" value="images" checked> Images</label>
+                        <label><input type="checkbox" value="videos"> Videos</label>
+                        <label><input type="checkbox" value="audio"> Audio</label>
+                        <label><input type="checkbox" value="documents"> Documents</label>
+                    </div>
+                </div>
+                <button onclick="scrapeMedia()" class="btn-primary">Extract Media</button>
+                <div id="mediaResults" class="results"></div>
+            </section>
+            
+            <!-- Website Crawl Tab -->
+            <section id="crawl" class="tab-content">
+                <h2>Website Crawler</h2>
+                <div class="form-group">
+                    <label>Start URL:</label>
+                    <input type="url" id="crawlUrl" placeholder="https://example.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Max Depth: <span id="depthValue">2</span></label>
+                    <input type="range" id="maxDepth" min="1" max="5" value="2" oninput="document.getElementById('depthValue').textContent = this.value">
+                </div>
+                <div class="form-group">
+                    <label>Max Pages: <span id="pagesValue">50</span></label>
+                    <input type="range" id="maxPages" min="10" max="200" value="50" step="10" oninput="document.getElementById('pagesValue').textContent = this.value">
+                </div>
+                <button onclick="crawlWebsite()" class="btn-primary">Start Crawl</button>
+                <div id="crawlResults" class="results"></div>
+            </section>
+            
+            <!-- Social Lookup Tab -->
+            <section id="social" class="tab-content">
+                <h2>Social Media Lookup</h2>
+                <div class="form-group">
+                    <label>Username:</label>
+                    <input type="text" id="socialUsername" placeholder="Enter username" required>
+                </div>
+                <button onclick="socialLookup()" class="btn-primary">Search Profiles</button>
+                <div id="socialResults" class="results"></div>
+            </section>
+        </main>
+        
+        <!-- Status footer -->
+        <footer>
+            <div id="status" class="status-bar">Ready</div>
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
