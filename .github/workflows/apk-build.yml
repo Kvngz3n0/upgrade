@@ -26,8 +26,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          api-levels: 33
-          target: default
+          api-levels: '33'
+          components: 'build-tools;33.0.0'
           ndk: none
 
       - name: Install root dependencies
