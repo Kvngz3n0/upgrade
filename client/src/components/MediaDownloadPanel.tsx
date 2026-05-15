@@ -339,7 +339,7 @@ const MediaDownloadPanel: React.FC<MediaDownloadPanelProps> = ({ media, title = 
         .item-preview {
           flex: 1;
           min-width: 0;
-          max-width: 400px;
+          max-width: 280px;
         }
 
         .item-link {
@@ -356,9 +356,13 @@ const MediaDownloadPanel: React.FC<MediaDownloadPanelProps> = ({ media, title = 
         }
 
         .preview-img {
-          max-width: 100%;
-          max-height: 50px;
+          width: 100%;
+          max-width: 280px;
+          max-height: 180px;
+          height: auto;
+          object-fit: contain;
           border-radius: 4px;
+          display: block;
         }
 
         .item-url {

@@ -15,6 +15,7 @@ npm run docker:run
 
 ## Notes
 - The `import/` folder contains the external client repo and a user-agent generator.
+- Android image scaling references are documented in `import/IMAGE_SCALING_REFERENCES.md`.
 - The scraper engine uses rotating user agents for better request compatibility.
 
 ## GitHub APK build
