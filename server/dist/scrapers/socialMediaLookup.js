@@ -1,6 +1,46 @@
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { getRandomUserAgent } from './userAgents.js';
+const EXTENSIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../import/extensions');
+function loadExtensionPlatforms() {
+    const platforms = {};
+    try {
+        if (!fs.existsSync(EXTENSIONS_DIR)) {
+            return platforms;
+        }
+        for (const fileName of fs.readdirSync(EXTENSIONS_DIR)) {
+            if (!fileName.endsWith('.json')) {
+                continue;
+            }
+            const filePath = path.join(EXTENSIONS_DIR, fileName);
+            const raw = fs.readFileSync(filePath, 'utf8');
+            const def = JSON.parse(raw);
+            if (!def.id || !def.name || !def.urlTemplate || !def.checkUrlTemplate || !def.pattern) {
+                continue;
+            }
+            const flags = def.patternFlags || '';
+            const pattern = def.pattern.startsWith('/') && def.pattern.endsWith('/')
+                ? new RegExp(def.pattern.slice(1, -1), flags)
+                : new RegExp(def.pattern, flags);
+            platforms[def.id] = {
+                name: def.name,
+                url: (username) => def.urlTemplate.replace(/{username}/g, encodeURIComponent(username)),
+                checkUrl: (username) => def.checkUrlTemplate.replace(/{username}/g, encodeURIComponent(username)),
+                pattern,
+                headers: def.headers || {},
+                disableHead: def.disableHead ?? false
+            };
+        }
+    }
+    catch (error) {
+        console.warn('Failed to load media lookup extensions:', error);
+    }
+    return platforms;
+}
 // Define social media platforms and their URLs
-const PLATFORMS = {
+const BUILT_IN_PLATFORMS = {
     twitter: {
         name: 'Twitter/X',
         url: (username) => `https://twitter.com/${username}`,
@@ -75,7 +115,7 @@ const PLATFORMS = {
     }
 };
 // Adult / subscription platforms (added on user request)
-Object.assign(PLATFORMS, {
+Object.assign(BUILT_IN_PLATFORMS, {
     onlyfans: {
         name: 'OnlyFans',
         url: (username) => `https://onlyfans.com/${username}`,
@@ -102,7 +142,7 @@ Object.assign(PLATFORMS, {
     }
 });
 // Additional adult/subscription platforms and patronage sites
-Object.assign(PLATFORMS, {
+Object.assign(BUILT_IN_PLATFORMS, {
     patreon: {
         name: 'Patreon',
         url: (username) => `https://www.patreon.com/${username}`,
@@ -126,8 +166,61 @@ Object.assign(PLATFORMS, {
         url: (username) => `https://www.manyvids.com/Profile/${username}`,
         checkUrl: (username) => `https://www.manyvids.com/Profile/${username}`,
         pattern: /^[a-zA-Z0-9_.-]{1,50}$/
+    },
+    pinterest: {
+        name: 'Pinterest',
+        url: (username) => `https://www.pinterest.com/${username}/`,
+        checkUrl: (username) => `https://www.pinterest.com/${username}/`,
+        pattern: /^[a-zA-Z0-9_]{1,30}$/
+    },
+    vimeo: {
+        name: 'Vimeo',
+        url: (username) => `https://vimeo.com/${username}`,
+        checkUrl: (username) => `https://vimeo.com/${username}`,
+        pattern: /^[a-zA-Z0-9_.-]{1,50}$/
+    },
+    tumblr: {
+        name: 'Tumblr',
+        url: (username) => `https://${username}.tumblr.com/`,
+        checkUrl: (username) => `https://${username}.tumblr.com/`,
+        pattern: /^[a-zA-Z0-9_-]{1,50}$/
+    },
+    soundcloud: {
+        name: 'SoundCloud',
+        url: (username) => `https://soundcloud.com/${username}`,
+        checkUrl: (username) => `https://soundcloud.com/${username}`,
+        pattern: /^[a-zA-Z0-9_-]{1,50}$/
+    },
+    behance: {
+        name: 'Behance',
+        url: (username) => `https://www.behance.net/${username}`,
+        checkUrl: (username) => `https://www.behance.net/${username}`,
+        pattern: /^[a-zA-Z0-9_-]{1,50}$/
+    },
+    dribbble: {
+        name: 'Dribbble',
+        url: (username) => `https://dribbble.com/${username}`,
+        checkUrl: (username) => `https://dribbble.com/${username}`,
+        pattern: /^[a-zA-Z0-9_-]{1,50}$/
+    },
+    facebook: {
+        name: 'Facebook',
+        url: (username) => `https://www.facebook.com/${username}`,
+        checkUrl: (username) => `https://www.facebook.com/${username}`,
+        pattern: /^[a-zA-Z0-9._-]{1,50}$/
+    },
+    spotify: {
+        name: 'Spotify',
+        url: (username) => `https://open.spotify.com/user/${username}`,
+        checkUrl: (username) => `https://open.spotify.com/user/${username}`,
+        pattern: /^[a-zA-Z0-9._-]{1,50}$/
     }
 });
+const EXTENSION_PLATFORMS = loadExtensionPlatforms();
+const PLATFORMS = {
+    ...BUILT_IN_PLATFORMS,
+    ...EXTENSION_PLATFORMS
+};
 async function checkProfileExists(platform, username) {
     const platformConfig = PLATFORMS[platform];
     if (!platformConfig) {
@@ -140,55 +233,60 @@ async function checkProfileExists(platform, username) {
             timestamp: new Date()
         };
     }
-    const url = platformConfig.url(username);
-    try {
-        // Attempt to fetch the profile via HTTP
-        const response = await axios.head(url, {
+    const publicUrl = platformConfig.url(username);
+    const targetUrl = platformConfig.checkUrl(username);
+    const headers = {
+        ...platformConfig.headers,
+        'User-Agent': getRandomUserAgent(),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://www.google.com/'
+    };
+    const createResult = (responseStatus, exists) => ({
+        platform: platformConfig.name,
+        username,
+        exists,
+        url: publicUrl,
+        profileFound: exists,
+        statusCode: responseStatus,
+        timestamp: new Date()
+    });
+    const tryRequest = async (method) => {
+        return axios({
+            method,
+            url: targetUrl,
             timeout: 5000,
             maxRedirects: 5,
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
+            headers,
+            validateStatus: () => true
         });
+    };
+    try {
+        let response;
+        if (platformConfig.disableHead) {
+            response = await tryRequest('get');
+        }
+        else {
+            response = await tryRequest('head');
+            if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+                response = await tryRequest('get');
+            }
+        }
         const exists = response.status >= 200 && response.status < 400;
-        return {
-            platform: platformConfig.name,
-            username,
-            exists,
-            url,
-            profileFound: exists,
-            statusCode: response.status,
-            timestamp: new Date()
-        };
+        return createResult(response.status, exists);
     }
     catch (error) {
-        // If HEAD request fails, try GET
         try {
-            const response = await axios.get(url, {
-                timeout: 5000,
-                maxRedirects: 5,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
+            const response = await tryRequest('get');
             const exists = response.status >= 200 && response.status < 400;
-            return {
-                platform: platformConfig.name,
-                username,
-                exists,
-                url,
-                profileFound: exists,
-                statusCode: response.status,
-                timestamp: new Date()
-            };
+            return createResult(response.status, exists);
         }
         catch {
-            // Profile likely doesn't exist
             return {
                 platform: platformConfig.name,
                 username,
                 exists: false,
-                url,
+                url: publicUrl,
                 profileFound: false,
                 timestamp: new Date()
             };

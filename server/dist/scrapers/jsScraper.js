@@ -1,4 +1,5 @@
 import puppeteer from 'puppeteer';
+import { getRandomUserAgent } from './userAgents.js';
 let browser = null;
 async function getBrowser() {
     if (browser)
@@ -15,6 +16,7 @@ export async function scrapeWithJS(url, takeScreenshot = false) {
             const browserInstance = await getBrowser();
             page = await browserInstance.newPage();
             await page.setViewport({ width: 1920, height: 1080 });
+            await page.setUserAgent(getRandomUserAgent());
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
             const html = await page.content();
             const title = await page.title();

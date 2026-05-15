@@ -4,16 +4,7 @@ import { URL as URLClass } from 'url';
 import robotsParser from 'robots-parser';
 import { spawnSync } from 'child_process';
 import path from 'path';
-// Realistic browser user agents
-const USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-];
-function getRandomUserAgent() {
-    return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
+import { getRandomUserAgent } from './userAgents.js';
 class WebCrawler {
     constructor() {
         this.visited = new Set();
@@ -22,6 +13,77 @@ class WebCrawler {
         this.errors = {};
         this.robotsRules = {};
         this.startTime = 0;
+        this.mediaSets = {
+            images: new Set(),
+            videos: new Set(),
+            audio: new Set(),
+            documents: new Set(),
+            archives: new Set(),
+            ebooks: new Set()
+        };
+    }
+    normalizeMediaUrl(value, baseUrl) {
+        try {
+            const trimmed = value.trim();
+            if (!trimmed)
+                return null;
+            return new URLClass(trimmed, baseUrl).toString();
+        }
+        catch {
+            return null;
+        }
+    }
+    extractMedia(document, baseUrl) {
+        const collect = (selector, attr) => Array.from(document.querySelectorAll(selector))
+            .map((el) => el.getAttribute(attr) || '')
+            .filter(Boolean)
+            .map((value) => this.normalizeMediaUrl(value, baseUrl))
+            .filter(Boolean);
+        const styleUrls = Array.from(document.querySelectorAll('[style]'))
+            .map((el) => el.getAttribute('style') || '')
+            .flatMap((style) => {
+            const matches = Array.from(style.matchAll(/url\(['\"]?(.*?)['\"]?\)/gi));
+            return matches.map((match) => match[1]);
+        })
+            .map((value) => this.normalizeMediaUrl(value, baseUrl))
+            .filter(Boolean);
+        const extractLinks = (pattern) => Array.from(document.querySelectorAll('a[href]'))
+            .map((el) => el.getAttribute('href') || '')
+            .filter((href) => href && pattern.test(href))
+            .map((href) => this.normalizeMediaUrl(href, baseUrl))
+            .filter(Boolean);
+        return {
+            images: Array.from(new Set([
+                ...collect('img', 'src'),
+                ...collect('img', 'data-src'),
+                ...collect('img', 'srcset'),
+                ...collect('img', 'data-srcset'),
+                ...styleUrls
+            ])),
+            videos: Array.from(new Set([
+                ...collect('video[src]', 'src'),
+                ...collect('video source[src]', 'src'),
+                ...collect('source[src]', 'src'),
+                ...collect('source[data-src]', 'data-src'),
+                ...collect('source[srcset]', 'srcset')
+            ])),
+            audio: Array.from(new Set([
+                ...collect('audio[src]', 'src'),
+                ...collect('audio source[src]', 'src')
+            ])),
+            documents: Array.from(new Set(extractLinks(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv)$/i))),
+            archives: Array.from(new Set(extractLinks(/\.(zip|rar|7z|gz|tar|bz2)$/i))),
+            ebooks: Array.from(new Set(extractLinks(/\.(epub|mobi|azw|azw3)$/i)))
+        };
+    }
+    addMediaUrls(media) {
+        Object.entries(media).forEach(([key, urls]) => {
+            urls.forEach((url) => {
+                if (!url)
+                    return;
+                this.mediaSets[key].add(url);
+            });
+        });
     }
     isValidUrl(url, baseUrl) {
         try {
@@ -131,6 +193,8 @@ class WebCrawler {
                 statusCode: response.status,
                 timestamp: new Date()
             };
+            const media = this.extractMedia(document, url);
+            this.addMediaUrls(media);
             return page;
         }
         catch (error) {
@@ -174,6 +238,14 @@ class WebCrawler {
             pagesVisited: this.visited.size,
             pagesCrawled: this.results,
             totalLinks,
+            media: {
+                images: Array.from(this.mediaSets.images),
+                videos: Array.from(this.mediaSets.videos),
+                audio: Array.from(this.mediaSets.audio),
+                documents: Array.from(this.mediaSets.documents),
+                archives: Array.from(this.mediaSets.archives),
+                ebooks: Array.from(this.mediaSets.ebooks)
+            },
             errors: this.errors,
             duration,
             timestamp: new Date()
