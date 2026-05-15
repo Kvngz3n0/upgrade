@@ -10,6 +10,7 @@ A consolidated web scraping application with enhanced crawler and scraping capab
 - Imported user-agent generator under `import/`
 - External client reference copied into `import/client/` for scraper and lookup improvements
 - Android image scaling references available in `import/IMAGE_SCALING_REFERENCES.md`
+- Media lookup site extension guidance available in `import/MEDIA_LOOKUP_EXTENSIONS.md`
 
 ## Key folders
 - `server/` — backend API and scraper logic
