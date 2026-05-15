@@ -2,6 +2,7 @@ import { JSDOM } from 'jsdom';
 import axios from 'axios';
 import { spawnSync } from 'child_process';
 import path from 'path';
+import { getRandomUserAgent } from './userAgents.js';
 
 export interface ScrapedElement {
   tag: string;
@@ -30,19 +31,6 @@ export interface BasicScrapResult {
   elements: ScrapedElement[];
   media?: MediaExtraction;
   timestamp: Date;
-}
-
-// Realistic browser user agents
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2.1 Safari/605.1.15'
-];
-
-function getRandomUserAgent(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
 export async function scrapeBasic(url: string): Promise<BasicScrapResult> {
@@ -166,8 +154,21 @@ function parseContent(url: string, data: string): BasicScrapResult {
     const dom = new JSDOM(data, { url });
     const document = dom.window.document;
 
+    const normalizeMediaUrl = (value: string): string | null => {
+      try {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        return new URL(trimmed, url).toString();
+      } catch {
+        return null;
+      }
+    };
+
     const title = document.querySelector('title')?.textContent || 'No title';
-    const description = document.querySelector('meta[name="description"]')?.getAttribute('content') || '';
+    const description =
+      document.querySelector('meta[name="description"]')?.getAttribute('content') ||
+      document.querySelector('meta[property="og:description"]')?.getAttribute('content') ||
+      '';
 
     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4, h5, h6'))
       .map((el: any) => el.textContent)
@@ -183,14 +184,61 @@ function parseContent(url: string, data: string): BasicScrapResult {
       .slice(0, 50);
 
     const images = Array.from(document.querySelectorAll('img'))
-      .map((el: any) => el.getAttribute('src') || '')
-      .filter((src: string) => src)
-      .slice(0, 30);
+      .flatMap((el: any) => [
+        el.getAttribute('src'),
+        el.getAttribute('data-src'),
+        el.getAttribute('data-srcset'),
+        el.getAttribute('srcset')
+      ])
+      .filter(Boolean)
+      .map((src: string) => normalizeMediaUrl(src))
+      .filter(Boolean) as string[];
 
     const paragraphs = Array.from(document.querySelectorAll('p'))
       .map((el: any) => (el.textContent || '').trim())
       .filter((text: string) => text.length > 20)
       .slice(0, 10);
+
+    const extractSources = (selector: string, attribute: string): string[] =>
+      Array.from(document.querySelectorAll(selector))
+        .map((el: any) => el.getAttribute(attribute) || '')
+        .filter(Boolean)
+        .map((src: string) => normalizeMediaUrl(src))
+        .filter(Boolean) as string[];
+
+    const extractMediaLinks = (pattern: RegExp): string[] =>
+      Array.from(document.querySelectorAll('a[href]'))
+        .map((el: any) => el.getAttribute('href') || '')
+        .filter((href: string) => href && pattern.test(href))
+        .map((href: string) => normalizeMediaUrl(href))
+        .filter(Boolean) as string[];
+
+    const videoUrls = new Set<string>([
+      ...extractSources('video[src]', 'src'),
+      ...extractSources('video source[src]', 'src'),
+      ...extractSources('source[src]', 'src'),
+      ...extractSources('source[data-src]', 'data-src'),
+      ...extractSources('source[srcset]', 'srcset')
+    ]);
+
+    const audioUrls = new Set<string>([
+      ...extractSources('audio[src]', 'src'),
+      ...extractSources('audio source[src]', 'src'),
+      ...extractSources('source[src]', 'src')
+    ]);
+
+    const styleUrls = Array.from(document.querySelectorAll('[style]'))
+      .map((el: any) => el.getAttribute('style') || '')
+      .flatMap((style: string) => {
+        const matches = Array.from(style.matchAll(/url\(['\"]?(.*?)['\"]?\)/gi));
+        return matches.map((match) => match[1]);
+      })
+      .map((src: string) => normalizeMediaUrl(src))
+      .filter(Boolean) as string[];
+
+    const documentUrls = new Set<string>(extractMediaLinks(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv)$/i));
+    const archiveUrls = new Set<string>(extractMediaLinks(/\.(zip|rar|7z|gz|tar|bz2)$/i));
+    const ebookUrls = new Set<string>(extractMediaLinks(/\.(epub|mobi|azw|azw3)$/i));
 
     // Collect various elements
     const elements: ScrapedElement[] = Array.from(
@@ -216,22 +264,12 @@ function parseContent(url: string, data: string): BasicScrapResult {
       paragraphs: paragraphs as string[],
       elements,
       media: {
-        images: images.slice(0, 30),
-        videos: Array.from(document.querySelectorAll('video source[src]'))
-          .map((el: any) => el.getAttribute('src'))
-          .filter(Boolean),
-        audio: Array.from(document.querySelectorAll('audio source[src]'))
-          .map((el: any) => el.getAttribute('src'))
-          .filter(Boolean),
-        documents: Array.from(document.querySelectorAll('a[href]'))
-          .map((el: any) => el.getAttribute('href'))
-          .filter((h: string) => /\\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv)$/i.test(h)),
-        archives: Array.from(document.querySelectorAll('a[href]'))
-          .map((el: any) => el.getAttribute('href'))
-          .filter((h: string) => /\\.(zip|rar|7z|gz|tar|bz2)$/i.test(h)),
-        ebooks: Array.from(document.querySelectorAll('a[href]'))
-          .map((el: any) => el.getAttribute('href'))
-          .filter((h: string) => /\\.(epub|mobi|azw|azw3)$/i.test(h))
+        images: Array.from(new Set([...images, ...styleUrls])).slice(0, 50),
+        videos: Array.from(videoUrls),
+        audio: Array.from(audioUrls),
+        documents: Array.from(documentUrls),
+        archives: Array.from(archiveUrls),
+        ebooks: Array.from(ebookUrls)
       },
       timestamp: new Date()
     };

@@ -8,6 +8,7 @@ build/
 .vscode/
 .idea/
 .DS_Store
+android/
 android/app/build/
 android/.gradle/
 www/

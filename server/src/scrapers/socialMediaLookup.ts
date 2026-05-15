@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getRandomUserAgent } from './userAgents.js';
 
 export interface SocialMediaProfile {
   platform: string;
@@ -147,6 +148,54 @@ Object.assign(PLATFORMS, {
     url: (username: string) => `https://www.manyvids.com/Profile/${username}`,
     checkUrl: (username: string) => `https://www.manyvids.com/Profile/${username}`,
     pattern: /^[a-zA-Z0-9_.-]{1,50}$/
+  },
+  pinterest: {
+    name: 'Pinterest',
+    url: (username: string) => `https://www.pinterest.com/${username}/`,
+    checkUrl: (username: string) => `https://www.pinterest.com/${username}/`,
+    pattern: /^[a-zA-Z0-9_]{1,30}$/
+  },
+  vimeo: {
+    name: 'Vimeo',
+    url: (username: string) => `https://vimeo.com/${username}`,
+    checkUrl: (username: string) => `https://vimeo.com/${username}`,
+    pattern: /^[a-zA-Z0-9_.-]{1,50}$/
+  },
+  tumblr: {
+    name: 'Tumblr',
+    url: (username: string) => `https://${username}.tumblr.com/`,
+    checkUrl: (username: string) => `https://${username}.tumblr.com/`,
+    pattern: /^[a-zA-Z0-9_-]{1,50}$/
+  },
+  soundcloud: {
+    name: 'SoundCloud',
+    url: (username: string) => `https://soundcloud.com/${username}`,
+    checkUrl: (username: string) => `https://soundcloud.com/${username}`,
+    pattern: /^[a-zA-Z0-9_-]{1,50}$/
+  },
+  behance: {
+    name: 'Behance',
+    url: (username: string) => `https://www.behance.net/${username}`,
+    checkUrl: (username: string) => `https://www.behance.net/${username}`,
+    pattern: /^[a-zA-Z0-9_-]{1,50}$/
+  },
+  dribbble: {
+    name: 'Dribbble',
+    url: (username: string) => `https://dribbble.com/${username}`,
+    checkUrl: (username: string) => `https://dribbble.com/${username}`,
+    pattern: /^[a-zA-Z0-9_-]{1,50}$/
+  },
+  facebook: {
+    name: 'Facebook',
+    url: (username: string) => `https://www.facebook.com/${username}`,
+    checkUrl: (username: string) => `https://www.facebook.com/${username}`,
+    pattern: /^[a-zA-Z0-9._-]{1,50}$/
+  },
+  spotify: {
+    name: 'Spotify',
+    url: (username: string) => `https://open.spotify.com/user/${username}`,
+    checkUrl: (username: string) => `https://open.spotify.com/user/${username}`,
+    pattern: /^[a-zA-Z0-9._-]{1,50}$/
   }
 });
 
@@ -168,52 +217,48 @@ async function checkProfileExists(
   }
 
   const url = platformConfig.url(username);
+  const headers = {
+    'User-Agent': getRandomUserAgent(),
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.google.com/'
+  };
 
-  try {
-    // Attempt to fetch the profile via HTTP
-    const response = await axios.head(url, {
+  const createResult = (responseStatus: number, exists: boolean): SocialMediaProfile => ({
+    platform: platformConfig.name,
+    username,
+    exists,
+    url,
+    profileFound: exists,
+    statusCode: responseStatus,
+    timestamp: new Date()
+  });
+
+  const tryRequest = async (method: 'head' | 'get') => {
+    return axios({
+      method,
+      url,
       timeout: 5000,
       maxRedirects: 5,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-      }
+      headers,
+      validateStatus: () => true
     });
+  };
+
+  try {
+    let response = await tryRequest('head');
+    if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+      response = await tryRequest('get');
+    }
 
     const exists = response.status >= 200 && response.status < 400;
-
-    return {
-      platform: platformConfig.name,
-      username,
-      exists,
-      url,
-      profileFound: exists,
-      statusCode: response.status,
-      timestamp: new Date()
-    };
+    return createResult(response.status, exists);
   } catch (error) {
-    // If HEAD request fails, try GET
     try {
-      const response = await axios.get(url, {
-        timeout: 5000,
-        maxRedirects: 5,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-
+      const response = await tryRequest('get');
       const exists = response.status >= 200 && response.status < 400;
-
-      return {
-        platform: platformConfig.name,
-        username,
-        exists,
-        url,
-        profileFound: exists,
-        statusCode: response.status,
-        timestamp: new Date()
-      };
+      return createResult(response.status, exists);
     } catch {
-      // Profile likely doesn't exist
       return {
         platform: platformConfig.name,
         username,

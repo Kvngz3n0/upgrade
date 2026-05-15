@@ -1,4 +1,5 @@
 import puppeteer, { Browser, Page } from 'puppeteer';
+import { getRandomUserAgent } from './userAgents.js';
 
 export interface JSScrapResult {
   url: string;
@@ -27,6 +28,7 @@ export async function scrapeWithJS(url: string, takeScreenshot = false): Promise
       const browserInstance = await getBrowser();
       page = await browserInstance.newPage();
       await page.setViewport({ width: 1920, height: 1080 });
+      await page.setUserAgent(getRandomUserAgent());
       await page.goto(url, { waitUntil: 'networkidle2', timeout: 20000 });
 
       const html = await page.content();
