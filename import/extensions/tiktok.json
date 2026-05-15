@@ -1,0 +1,11 @@
+{
+  "id": "tiktok",
+  "name": "TikTok",
+  "urlTemplate": "https://tiktok.com/@{username}",
+  "checkUrlTemplate": "https://www.tiktok.com/@{username}",
+  "pattern": "^[a-zA-Z0-9_.]{1,24}$",
+  "disableHead": true,
+  "headers": {
+    "Accept": "text/html"
+  }
+}

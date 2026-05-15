@@ -1,0 +1,10 @@
+{
+  "id": "twitter",
+  "name": "Twitter/X",
+  "urlTemplate": "https://twitter.com/{username}",
+  "checkUrlTemplate": "https://twitter.com/{username}",
+  "pattern": "^[a-zA-Z0-9_]{1,15}$",
+  "headers": {
+    "Accept": "text/html"
+  }
+}

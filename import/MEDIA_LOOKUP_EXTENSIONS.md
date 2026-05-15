@@ -70,4 +70,7 @@ This makes media lookup more modular and lets you add:
 
 ## Next step for this repo
 
-I can also add a working extension loader and a small `import/extensions/` starter set so your media lookup can be extended with site definitions instead of hard-coded platforms.
+A working extension loader has now been added to `server/src/scrapers/socialMediaLookup.ts`.
+The loader reads `import/extensions/*.json` and merges those site definitions into the lookup registry at runtime.
+
+A starter set of extension definitions is provided in `import/extensions/`.

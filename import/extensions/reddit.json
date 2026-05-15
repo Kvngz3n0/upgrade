@@ -1,0 +1,10 @@
+{
+  "id": "reddit",
+  "name": "Reddit",
+  "urlTemplate": "https://reddit.com/user/{username}",
+  "checkUrlTemplate": "https://www.reddit.com/user/{username}/about.json",
+  "pattern": "^[a-zA-Z0-9_-]{1,20}$",
+  "headers": {
+    "Accept": "application/json"
+  }
+}

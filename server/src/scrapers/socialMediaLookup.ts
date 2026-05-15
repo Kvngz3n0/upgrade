@@ -1,4 +1,7 @@
 import axios from 'axios';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { getRandomUserAgent } from './userAgents.js';
 
 export interface SocialMediaProfile {
@@ -19,8 +22,78 @@ export interface SocialMediaLookupResult {
   timestamp: Date;
 }
 
+interface MediaLookupExtensionDefinition {
+  id: string;
+  name: string;
+  urlTemplate: string;
+  checkUrlTemplate: string;
+  pattern: string;
+  patternFlags?: string;
+  headers?: Record<string, string>;
+  disableHead?: boolean;
+}
+
+interface PlatformEntry {
+  name: string;
+  url: (username: string) => string;
+  checkUrl: (username: string) => string;
+  pattern: RegExp;
+  headers?: Record<string, string>;
+  disableHead?: boolean;
+}
+
+const EXTENSIONS_DIR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../import/extensions'
+);
+
+function loadExtensionPlatforms(): Record<string, PlatformEntry> {
+  const platforms: Record<string, PlatformEntry> = {};
+
+  try {
+    if (!fs.existsSync(EXTENSIONS_DIR)) {
+      return platforms;
+    }
+
+    for (const fileName of fs.readdirSync(EXTENSIONS_DIR)) {
+      if (!fileName.endsWith('.json')) {
+        continue;
+      }
+
+      const filePath = path.join(EXTENSIONS_DIR, fileName);
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const def = JSON.parse(raw) as MediaLookupExtensionDefinition;
+
+      if (!def.id || !def.name || !def.urlTemplate || !def.checkUrlTemplate || !def.pattern) {
+        continue;
+      }
+
+      const flags = def.patternFlags || '';
+      const pattern =
+        def.pattern.startsWith('/') && def.pattern.endsWith('/')
+          ? new RegExp(def.pattern.slice(1, -1), flags)
+          : new RegExp(def.pattern, flags);
+
+      platforms[def.id] = {
+        name: def.name,
+        url: (username: string) =>
+          def.urlTemplate.replace(/{username}/g, encodeURIComponent(username)),
+        checkUrl: (username: string) =>
+          def.checkUrlTemplate.replace(/{username}/g, encodeURIComponent(username)),
+        pattern,
+        headers: def.headers || {},
+        disableHead: def.disableHead ?? false
+      };
+    }
+  } catch (error) {
+    console.warn('Failed to load media lookup extensions:', error);
+  }
+
+  return platforms;
+}
+
 // Define social media platforms and their URLs
-const PLATFORMS = {
+const BUILT_IN_PLATFORMS = {
   twitter: {
     name: 'Twitter/X',
     url: (username: string) => `https://twitter.com/${username}`,
@@ -96,7 +169,7 @@ const PLATFORMS = {
 };
 
 // Adult / subscription platforms (added on user request)
-Object.assign(PLATFORMS, {
+Object.assign(BUILT_IN_PLATFORMS, {
   onlyfans: {
     name: 'OnlyFans',
     url: (username: string) => `https://onlyfans.com/${username}`,
@@ -124,7 +197,7 @@ Object.assign(PLATFORMS, {
 });
 
 // Additional adult/subscription platforms and patronage sites
-Object.assign(PLATFORMS, {
+Object.assign(BUILT_IN_PLATFORMS, {
   patreon: {
     name: 'Patreon',
     url: (username: string) => `https://www.patreon.com/${username}`,
@@ -199,6 +272,12 @@ Object.assign(PLATFORMS, {
   }
 });
 
+const EXTENSION_PLATFORMS = loadExtensionPlatforms();
+const PLATFORMS: Record<string, PlatformEntry> = {
+  ...BUILT_IN_PLATFORMS,
+  ...EXTENSION_PLATFORMS
+};
+
 async function checkProfileExists(
   platform: string,
   username: string
@@ -216,8 +295,10 @@ async function checkProfileExists(
     };
   }
 
-  const url = platformConfig.url(username);
+  const publicUrl = platformConfig.url(username);
+  const targetUrl = platformConfig.checkUrl(username);
   const headers = {
+    ...platformConfig.headers,
     'User-Agent': getRandomUserAgent(),
     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'en-US,en;q=0.9',
@@ -228,7 +309,7 @@ async function checkProfileExists(
     platform: platformConfig.name,
     username,
     exists,
-    url,
+    url: publicUrl,
     profileFound: exists,
     statusCode: responseStatus,
     timestamp: new Date()
@@ -237,7 +318,7 @@ async function checkProfileExists(
   const tryRequest = async (method: 'head' | 'get') => {
     return axios({
       method,
-      url,
+      url: targetUrl,
       timeout: 5000,
       maxRedirects: 5,
       headers,
@@ -246,9 +327,14 @@ async function checkProfileExists(
   };
 
   try {
-    let response = await tryRequest('head');
-    if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+    let response;
+    if (platformConfig.disableHead) {
       response = await tryRequest('get');
+    } else {
+      response = await tryRequest('head');
+      if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+        response = await tryRequest('get');
+      }
     }
 
     const exists = response.status >= 200 && response.status < 400;
@@ -263,7 +349,7 @@ async function checkProfileExists(
         platform: platformConfig.name,
         username,
         exists: false,
-        url,
+        url: publicUrl,
         profileFound: false,
         timestamp: new Date()
       };

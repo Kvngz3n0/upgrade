@@ -1,0 +1,10 @@
+{
+  "id": "github",
+  "name": "GitHub",
+  "urlTemplate": "https://github.com/{username}",
+  "checkUrlTemplate": "https://api.github.com/users/{username}",
+  "pattern": "^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$",
+  "headers": {
+    "Accept": "application/vnd.github.v3+json"
+  }
+}

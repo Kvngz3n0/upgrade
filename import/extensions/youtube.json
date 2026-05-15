@@ -1,0 +1,10 @@
+{
+  "id": "youtube",
+  "name": "YouTube",
+  "urlTemplate": "https://youtube.com/@{username}",
+  "checkUrlTemplate": "https://www.youtube.com/@{username}",
+  "pattern": "^[a-zA-Z0-9_-]{1,30}$",
+  "headers": {
+    "Accept": "text/html"
+  }
+}

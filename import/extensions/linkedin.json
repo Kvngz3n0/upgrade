@@ -1,0 +1,10 @@
+{
+  "id": "linkedin",
+  "name": "LinkedIn",
+  "urlTemplate": "https://linkedin.com/in/{username}",
+  "checkUrlTemplate": "https://www.linkedin.com/in/{username}",
+  "pattern": "^[a-zA-Z0-9-]{3,100}$",
+  "headers": {
+    "Accept": "text/html"
+  }
+}

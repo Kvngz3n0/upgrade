@@ -1,0 +1,11 @@
+{
+  "id": "instagram",
+  "name": "Instagram",
+  "urlTemplate": "https://instagram.com/{username}",
+  "checkUrlTemplate": "https://www.instagram.com/{username}/?__a=1",
+  "pattern": "^[a-zA-Z0-9_.]{1,30}$",
+  "disableHead": true,
+  "headers": {
+    "Accept": "text/html"
+  }
+}
