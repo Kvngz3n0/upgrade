@@ -13,5 +13,4 @@ android/app/build/
 android/.gradle/
 www/
 ios/App/Pods/
-client/index.html
 
