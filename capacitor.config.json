@@ -3,7 +3,6 @@
   "appName": "Web Scraper",
   "webDir": "client/dist",
   "server": {
-    "url": "http://localhost",
     "cleartext": true
   },
   "ios": {
