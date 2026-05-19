@@ -16,6 +16,7 @@
     "docker:run": "docker run -p 5000:5000 -p 3000:3000 web-scraper-app"
   },
   "devDependencies": {
+    "@capacitor/cli": "^6.0.0",
     "@types/cheerio": "^0.22.35",
     "@types/compression": "^1.8.1",
     "@types/express": "^5.0.6",
@@ -26,6 +27,8 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
     "axios": "^1.13.5",
     "cheerio": "^1.2.0",
     "compression": "^1.8.1",
