@@ -75,6 +75,19 @@ async function tryEngines<T>(engines: string[], handlers: Record<string, () => P
   throw new Error(errMsg);
 }
 
+function normalizeEngineOrder(order: unknown, defaultOrder: string[]): string[] {
+  if (!order || typeof order !== 'string') {
+    return defaultOrder;
+  }
+
+  const normalized = (order as string)
+    .split(',')
+    .map((engine) => engine.trim())
+    .filter((engine) => engine && engine.toLowerCase() !== 'default');
+
+  return normalized.length > 0 ? normalized : defaultOrder;
+}
+
 // Basic scraping endpoint
 app.post('/api/scrape/basic', async (req: Request, res: Response) => {
   try {
@@ -92,15 +105,12 @@ app.post('/api/scrape/basic', async (req: Request, res: Response) => {
     }
 
     // Determine engine order for fallback
-    const candidateEngines = engineOrder 
-      ? engineOrder.split(',').map((e: string) => e.trim()).filter((e: string) => e) 
-      : (() => {
-      const e = (engine || 'auto').toString();
-      if (e === 'auto') return ['python', 'html'];
+    const candidateEngines = normalizeEngineOrder(engineOrder, (() => {
+      const e = (engine || 'html').toString();
       if (e === 'python') return ['python', 'html'];
       if (e === 'js') return ['js', 'html'];
-      return ['html'];
-    })();
+      return ['html', 'python'];
+    })());
 
     const handlers: Record<string, () => Promise<any>> = {
       python: async () => await scrapeWithPython(url),
@@ -177,13 +187,12 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
 
     try {
       // Build candidate engines for basic scrape fallback
-      const candidateEngines = (() => {
-        const e = (engine || 'auto').toString();
-        if (e === 'auto') return includeJS ? ['python', 'html', 'js'] : ['python', 'html'];
+      const candidateEngines = normalizeEngineOrder(engineOrder, (() => {
+        const e = (engine || 'html').toString();
         if (e === 'python') return includeJS ? ['python', 'html', 'js'] : ['python', 'html'];
         if (e === 'js') return ['js', 'html'];
-        return ['html'];
-      })();
+        return includeJS ? ['html', 'python', 'js'] : ['html', 'python'];
+      })());
 
       const handlers: Record<string, () => Promise<any>> = {
         python: async () => await scrapeWithPython(url),
@@ -191,10 +200,8 @@ app.post('/api/scrape', async (req: Request, res: Response) => {
         js: async () => await scrapeWithJS(url, screenshot)
       };
 
-      // Allow engineOrder override
-      const engines = engineOrder 
-        ? engineOrder.split(',').map((e: string) => e.trim()).filter((e: string) => e)
-        : candidateEngines;
+      // Allow engineOrder override, but preserve the default order when the UI sends "default"
+      const engines = normalizeEngineOrder(engineOrder, candidateEngines);
       const { engine: used, result: resObj, attempts } = await tryEngines(engines, handlers);
       results.basic = { ...resObj, _engineUsed: used, _engineAttempts: attempts };
     } catch (error) {
@@ -249,15 +256,13 @@ app.post('/api/crawl', async (req: Request, res: Response) => {
     const depth = Math.min(Math.max(parseInt(maxDepth) || 2, 1), 5);
     const pages = Math.min(Math.max(parseInt(maxPages) || 50, 5), 200);
 
-    // Crawl using requested engine with fallback: python -> html
-    const candidateEngines = engineOrder 
-      ? engineOrder.split(',').map((e: string) => e.trim()).filter((e: string) => e)
-      : (() => {
-      const e = (engine || 'auto').toString();
+    // Crawl using requested engine with fallback: HTML -> Python by default
+    const candidateEngines = normalizeEngineOrder(engineOrder, (() => {
+      const e = (engine || 'html').toString();
       if (e === 'python') return ['python', 'html'];
-      if (e === 'html' || e === 'default') return ['html'];
-      return ['python', 'html'];
-    })();
+      if (e === 'js') return ['html', 'python'];
+      return ['html', 'python'];
+    })());
 
     const handlers: Record<string, () => Promise<any>> = {
       python: async () => await crawlWithPython(url, depth, pages, ignoreRobots),

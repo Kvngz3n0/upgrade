@@ -74,6 +74,6 @@ If the workflow succeeds, download the APK from the workflow run summary.
 
 ## Notes
 - The `import/` folder contains imported repository assets and a user-agent generator.
-- Android image scaling references are documented in `import/IMAGE_SCALING_REFERENCES.md`.
+- Android image scaling references are documented in `import/IMAGE_SCALING_REFERENCES.md`, with examples drawn from `Kvngz3n0/Imge-deecoder` and `imagescaler`.
 - Media lookup site-extension guidance is available in `import/MEDIA_LOOKUP_EXTENSIONS.md`.
 - The scraper engine uses rotating user agents for better request compatibility.

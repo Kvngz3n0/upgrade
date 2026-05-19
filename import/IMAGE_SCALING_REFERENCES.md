@@ -13,6 +13,10 @@ This repository includes references for native Android image scaling and decodin
   - Repository: https://github.com/Kvngz3n0/Imge-deecoder.git
   - Purpose: improved image decoding and handling for Android native components.
   - Use case: add native image decoder support when loading large or unusual image formats from scraped media.
+- `imagescaler`
+  - Repository: https://github.com/Kvngz3n0/imagescaler.git
+  - Purpose: subsampling, tiled image display, pinch-to-zoom and native scaling for large images.
+  - Use case: render high resolution scraped media without OutOfMemoryError by loading lower-resolution preview tiles and decoding at visible zoom levels.
 
 ## Integration Notes
 

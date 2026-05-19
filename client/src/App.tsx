@@ -33,7 +33,7 @@ function App() {
   const [includeJS, setIncludeJS] = useState(false);
   const [screenshot, setScreenshot] = useState(false);
   const [engine, setEngine] = useState<string>('html');
-  const [engineOrder, setEngineOrder] = useState<string>('auto');
+  const [engineOrder, setEngineOrder] = useState<string>('html,python');
   const [fileType, setFileType] = useState<string>('default');
   const [activeResultsTab, setActiveResultsTab] = useState<'basic' | 'js'>('basic');
   

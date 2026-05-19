@@ -12,6 +12,9 @@ export interface SocialMediaProfile {
   profileFound: boolean;
   statusCode?: number;
   timestamp: Date;
+  resolvedUsername?: string;
+  redirectedTo?: string;
+  note?: string;
 }
 
 export interface SocialMediaLookupResult {
@@ -46,6 +49,75 @@ const EXTENSIONS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../import/extensions'
 );
+
+function getFinalResponseUrl(response: any): string | null {
+  return (
+    response?.request?.res?.responseUrl ||
+    response?.request?.path ||
+    response?.config?.url ||
+    null
+  );
+}
+
+function extractCanonicalUrl(html: string): string | null {
+  const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]+name=["']twitter:url["'][^>]+content=["']([^"']+)["']/i);
+  return canonicalMatch?.[1] || null;
+}
+
+function extractUsernameFromUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    const path = parsed.pathname.replace(/\/+/g, '/').replace(/\/$/, '');
+    const segments = path.split('/').filter(Boolean);
+    if (segments.length === 0) {
+      return null;
+    }
+    const candidate = segments[segments.length - 1];
+    return candidate.startsWith('@') ? candidate.slice(1) : candidate;
+  } catch {
+    return null;
+  }
+}
+
+function extractUsernameFromTitle(html: string): string | null {
+  const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+  if (!match) {
+    return null;
+  }
+  const title = match[1];
+  const usernameMatch = title.match(/@([A-Za-z0-9_.-]{1,50})/);
+  return usernameMatch?.[1] || null;
+}
+
+function detectMissingProfileHtml(html: string): boolean {
+  if (!html) {
+    return false;
+  }
+  return /(?:page|profile|user|account).{0,30}(?:not found|doesn['’]t exist|cannot find|unavailable|removed|suspended|deleted)/i.test(html);
+}
+
+function resolveUsernameFromResponse(html: string, finalUrl: string): string | null {
+  const canonicalUrl = extractCanonicalUrl(html) || finalUrl;
+  const fromCanonical = extractUsernameFromUrl(canonicalUrl || '');
+  if (fromCanonical) {
+    return fromCanonical;
+  }
+  const fromTitle = extractUsernameFromTitle(html);
+  if (fromTitle) {
+    return fromTitle;
+  }
+  return extractUsernameFromUrl(finalUrl);
+}
+
+function getUsernameFromApiResponse(platform: string, data: any): string | null {
+  if (!data || typeof data !== 'object') return null;
+  if (platform === 'github' && typeof data.login === 'string') return data.login;
+  if (platform === 'twitter' && data.data && typeof data.data.username === 'string') return data.data.username;
+  if (platform === 'instagram' && data.graphql?.user?.username) return data.graphql.user.username;
+  return null;
+}
 
 function loadExtensionPlatforms(): Record<string, PlatformEntry> {
   const platforms: Record<string, PlatformEntry> = {};
@@ -97,7 +169,7 @@ const BUILT_IN_PLATFORMS = {
   twitter: {
     name: 'Twitter/X',
     url: (username: string) => `https://twitter.com/${username}`,
-    checkUrl: (username: string) => `https://api.twitter.com/2/users/by/username/${username}`,
+    checkUrl: (username: string) => `https://twitter.com/${username}`,
     pattern: /^[a-zA-Z0-9_]{1,15}$/
   },
   github: {
@@ -109,7 +181,7 @@ const BUILT_IN_PLATFORMS = {
   instagram: {
     name: 'Instagram',
     url: (username: string) => `https://instagram.com/${username}`,
-    checkUrl: (username: string) => `https://www.instagram.com/api/v1/users/web_profile_info/?username=${username}`,
+    checkUrl: (username: string) => `https://www.instagram.com/${username}`,
     pattern: /^[a-zA-Z0-9_.]{1,30}$/
   },
   linkedin: {
@@ -127,7 +199,7 @@ const BUILT_IN_PLATFORMS = {
   reddit: {
     name: 'Reddit',
     url: (username: string) => `https://reddit.com/user/${username}`,
-    checkUrl: (username: string) => `https://www.reddit.com/user/${username}/about.json`,
+    checkUrl: (username: string) => `https://www.reddit.com/user/${username}`,
     pattern: /^[a-zA-Z0-9_-]{1,20}$/
   },
   youtube: {
@@ -139,7 +211,7 @@ const BUILT_IN_PLATFORMS = {
   twitch: {
     name: 'Twitch',
     url: (username: string) => `https://twitch.tv/${username}`,
-    checkUrl: (username: string) => `https://api.twitch.tv/kraken/users/${username}`,
+    checkUrl: (username: string) => `https://www.twitch.tv/${username}`,
     pattern: /^[a-zA-Z0-9_]{4,25}$/
   },
   snapchat: {
@@ -150,14 +222,14 @@ const BUILT_IN_PLATFORMS = {
   },
   discord: {
     name: 'Discord',
-    url: (username: string) => `https://discordapp.com/users/${username}`,
-    checkUrl: (username: string) => `https://discordapp.com/api/users/${username}`,
+    url: (username: string) => `https://discord.com/users/${username}`,
+    checkUrl: (username: string) => `https://discord.com/users/${username}`,
     pattern: /^[a-zA-Z0-9_]{2,32}$/
   },
   mastodon: {
     name: 'Mastodon',
     url: (username: string) => `https://mastodon.social/@${username}`,
-    checkUrl: (username: string) => `https://mastodon.social/.well-known/webfinger?resource=acct:${username}@mastodon.social`,
+    checkUrl: (username: string) => `https://mastodon.social/@${username}`,
     pattern: /^[a-zA-Z0-9_]{1,30}$/
   },
   medium: {
@@ -305,14 +377,23 @@ async function checkProfileExists(
     'Referer': 'https://www.google.com/'
   };
 
-  const createResult = (responseStatus: number, exists: boolean): SocialMediaProfile => ({
+  const createResult = (
+    responseStatus: number,
+    exists: boolean,
+    finalUrl?: string,
+    note?: string,
+    resolvedUsername?: string
+  ): SocialMediaProfile => ({
     platform: platformConfig.name,
     username,
     exists,
     url: publicUrl,
     profileFound: exists,
     statusCode: responseStatus,
-    timestamp: new Date()
+    timestamp: new Date(),
+    redirectedTo: finalUrl && finalUrl !== targetUrl ? finalUrl : undefined,
+    resolvedUsername,
+    note
   });
 
   const tryRequest = async (method: 'head' | 'get') => {
@@ -320,7 +401,7 @@ async function checkProfileExists(
       method,
       url: targetUrl,
       timeout: 5000,
-      maxRedirects: 5,
+      maxRedirects: 10,
       headers,
       validateStatus: () => true
     });
@@ -332,18 +413,50 @@ async function checkProfileExists(
       response = await tryRequest('get');
     } else {
       response = await tryRequest('head');
-      if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+      if ([405, 403, 429, 406].includes(response.status)) {
         response = await tryRequest('get');
       }
     }
 
-    const exists = response.status >= 200 && response.status < 400;
-    return createResult(response.status, exists);
+    const finalUrl = getFinalResponseUrl(response) || targetUrl;
+    const html = typeof response.data === 'string' ? response.data : '';
+    const resolvedFromApi = getUsernameFromApiResponse(platform, response.data);
+    const resolvedUsername =
+      resolvedFromApi ||
+      resolveUsernameFromResponse(html, finalUrl) ||
+      username;
+    const exists = response.status >= 200 && response.status < 400 && !detectMissingProfileHtml(html);
+    const noteParts: string[] = [];
+    if (finalUrl !== targetUrl) {
+      noteParts.push('Redirect resolved to canonical profile URL');
+    }
+    if (resolvedUsername && resolvedUsername !== username) {
+      noteParts.push('Resolved username change from response');
+    }
+    const note = noteParts.length > 0 ? noteParts.join('; ') : undefined;
+
+    return createResult(response.status, exists, finalUrl, note, resolvedUsername);
   } catch (error) {
     try {
       const response = await tryRequest('get');
-      const exists = response.status >= 200 && response.status < 400;
-      return createResult(response.status, exists);
+      const finalUrl = getFinalResponseUrl(response) || targetUrl;
+      const html = typeof response.data === 'string' ? response.data : '';
+      const resolvedFromApi = getUsernameFromApiResponse(platform, response.data);
+      const resolvedUsername =
+        resolvedFromApi ||
+        resolveUsernameFromResponse(html, finalUrl) ||
+        username;
+      const exists = response.status >= 200 && response.status < 400 && !detectMissingProfileHtml(html);
+      const noteParts: string[] = [];
+      if (finalUrl !== targetUrl) {
+        noteParts.push('Redirect resolved to canonical profile URL');
+      }
+      if (resolvedUsername && resolvedUsername !== username) {
+        noteParts.push('Resolved username change from response');
+      }
+      const note = noteParts.length > 0 ? noteParts.join('; ') : undefined;
+
+      return createResult(response.status, exists, finalUrl, note, resolvedUsername);
     } catch {
       return {
         platform: platformConfig.name,

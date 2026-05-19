@@ -39,10 +39,9 @@ function ScraperSettings({
 
       <label className="select-label">
         <span>Fallback Engine Order:</span>
-        <select value={engineOrder || 'default'} onChange={(e) => onEngineOrderChange && onEngineOrderChange(e.target.value)}>
-          <option value="default">Auto (Python → HTML)</option>
-          <option value="python,html">Python first, then HTML</option>
+        <select value={engineOrder || 'html,python'} onChange={(e) => onEngineOrderChange && onEngineOrderChange(e.target.value)}>
           <option value="html,python">HTML first, then Python</option>
+          <option value="python,html">Python first, then HTML</option>
           <option value="python,html,js">Python → HTML → JS</option>
           <option value="html,python,js">HTML → Python → JS</option>
         </select>
