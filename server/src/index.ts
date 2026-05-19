@@ -300,15 +300,10 @@ app.post('/api/search', async (req: Request, res: Response) => {
   try {
     const { query, language = 'en', maxResults = 10 } = req.body;
 
-    if (!query || typeof query !== 'string') {
-      return res.status(400).json({ error: 'Search query is required' });
+    if (!query || typeof query !== 'string' || !query.trim()) {
+      return res.status(400).json({ error: 'Search query is required. Enter keywords, item names, or a phrase to search the web.' });
     }
 
-    if (query.trim().length === 0) {
-      return res.status(400).json({ error: 'Search query cannot be empty' });
-    }
-
-    // Limit maxResults between 1-50
     const limit = Math.min(Math.max(parseInt(maxResults) || 10, 1), 50);
 
     const result = await performWebSearch(query.trim(), language, limit);
@@ -317,6 +312,32 @@ app.post('/api/search', async (req: Request, res: Response) => {
     console.error('Search error:', error);
     res.status(500).json({
       error: error instanceof Error ? error.message : 'Search failed'
+    });
+  }
+});
+
+// Website Site Search endpoint (search across pages under a specific website)
+app.post('/api/site-search', async (req: Request, res: Response) => {
+  try {
+    const { url, searchTerm, maxDepth = 2, maxPages = 50 } = req.body;
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      return res.status(400).json({ error: 'URL is required for site search. Enter the website address to search within.' });
+    }
+
+    if (!searchTerm || typeof searchTerm !== 'string' || !searchTerm.trim()) {
+      return res.status(400).json({ error: 'Search term is required. Enter an item name or keyword to look for within the website.' });
+    }
+
+    const limitDepth = Math.min(Math.max(parseInt(maxDepth) || 2, 1), 5);
+    const limitPages = Math.min(Math.max(parseInt(maxPages) || 10, 1), 200);
+
+    const result = await searchWebsite(url.trim(), searchTerm.trim(), limitDepth, limitPages);
+    res.json(result);
+  } catch (error) {
+    console.error('Site search error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Site search failed'
     });
   }
 });

@@ -50,7 +50,7 @@ function SearchPanel({ onSearchStart, onSearchComplete }: SearchPanelProps) {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Enter your search query... (like Google or DuckDuckGo)"
+            placeholder="Enter keywords, item names, or phrases to search the web"
             className="input-field"
           />
         </div>

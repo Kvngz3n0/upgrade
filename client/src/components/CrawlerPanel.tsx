@@ -67,13 +67,11 @@ function CrawlerPanel({ onCrawlStart, onCrawlComplete, engine = 'html', engineOr
     onCrawlStart();
 
     try {
-      const response = await axios.post('/api/search', {
+      const response = await axios.post('/api/site-search', {
         url: crawlUrl.trim(),
         searchTerm: searchTerm.trim(),
         maxDepth,
-        maxPages,
-        engine,
-        fileType
+        maxPages
       });
       onCrawlComplete(response.data);
     } catch (err) {
@@ -106,7 +104,9 @@ function CrawlerPanel({ onCrawlStart, onCrawlComplete, engine = 'html', engineOr
         </div>
       </div>
       <p className="crawler-desc">
-        {isSearchMode ? 'Search for terms within a website' : 'Crawl a website and discover all linked pages'}
+        {isSearchMode
+          ? 'Search for item names or keywords inside pages on a website.'
+          : 'Crawl a website and discover all linked pages.'}
       </p>
 
       <div className="crawler-inputs">

@@ -55,7 +55,7 @@ function SearchResults({ result }: SearchResultsProps) {
           ))
         ) : (
           <div className="no-results">
-            <p>No results found. Try a different query.</p>
+            <p>No results found. Try a different query or broaden your terms.</p>
           </div>
         )}
       </div>
