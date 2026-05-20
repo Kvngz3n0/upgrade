@@ -184,10 +184,14 @@ class WebCrawler {
                     // Skip invalid links
                 }
             });
+            const textContent = document.body?.textContent
+                ? document.body.textContent.replace(/\s+/g, ' ').trim().substring(0, 2000)
+                : '';
             const page = {
                 url,
                 title,
                 description,
+                textContent,
                 outgoingLinks: Array.from(links),
                 depth,
                 statusCode: response.status,
@@ -251,6 +255,20 @@ class WebCrawler {
             timestamp: new Date()
         };
     }
+    escapeRegExp(text) {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    getExcerpt(content, term, maxLength = 150) {
+        const lower = content.toLowerCase();
+        const needle = term.toLowerCase();
+        const idx = lower.indexOf(needle);
+        if (idx < 0) {
+            return content.substring(0, maxLength) + (content.length > maxLength ? '...' : '');
+        }
+        const start = Math.max(0, idx - 40);
+        const excerpt = content.substring(start, Math.min(content.length, idx + needle.length + 40));
+        return excerpt.trim().substring(0, maxLength) + (excerpt.length > maxLength ? '...' : '');
+    }
     async search(startUrl, searchTerm, maxDepth = 2, maxPages = 50) {
         this.visited.clear();
         this.queue = [];
@@ -260,7 +278,7 @@ class WebCrawler {
         const searchResults = [];
         const normalizedStart = this.normalizeUrl(startUrl);
         this.queue.push({ url: normalizedStart, depth: 0 });
-        const searchRegex = new RegExp(searchTerm, 'gi');
+        const searchRegex = new RegExp(this.escapeRegExp(searchTerm), 'gi');
         while (this.queue.length > 0 && this.results.length < maxPages) {
             const { url, depth } = this.queue.shift();
             if (depth > maxDepth)
@@ -270,18 +288,19 @@ class WebCrawler {
             const page = await this.crawlPage(url, depth);
             if (page) {
                 this.results.push(page);
-                // Search in page title, description for the term
                 const titleMatches = (page.title.match(searchRegex) || []).length;
                 const descMatches = (page.description.match(searchRegex) || []).length;
-                const totalMatches = titleMatches + descMatches;
+                const textMatches = (page.textContent?.match(searchRegex) || []).length;
+                const totalMatches = titleMatches + descMatches + textMatches;
                 if (totalMatches > 0) {
-                    // Get excerpt from title or description
-                    const excerpt = page.description || page.title || 'No description available';
-                    const truncatedExcerpt = excerpt.length > 150 ? excerpt.substring(0, 150) + '...' : excerpt;
+                    const combinedText = [page.title, page.description, page.textContent]
+                        .filter(Boolean)
+                        .join(' ');
+                    const excerpt = this.getExcerpt(combinedText, searchTerm, 180);
                     searchResults.push({
                         sourceUrl: url,
                         pageTitle: page.title || 'Untitled',
-                        excerpt: truncatedExcerpt,
+                        excerpt,
                         matchCount: totalMatches,
                         timestamp: new Date()
                     });
@@ -295,7 +314,6 @@ class WebCrawler {
                     });
                 }
             }
-            // Rate limiting - 500ms between requests
             await new Promise((resolve) => setTimeout(resolve, 500));
         }
         const duration = Date.now() - this.startTime;

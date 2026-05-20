@@ -4,6 +4,71 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getRandomUserAgent } from './userAgents.js';
 const EXTENSIONS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../import/extensions');
+function getFinalResponseUrl(response) {
+    return (response?.request?.res?.responseUrl ||
+        response?.request?.path ||
+        response?.config?.url ||
+        null);
+}
+function extractCanonicalUrl(html) {
+    const canonicalMatch = html.match(/<link[^>]+rel=["']canonical["'][^>]+href=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+property=["']og:url["'][^>]+content=["']([^"']+)["']/i)
+        || html.match(/<meta[^>]+name=["']twitter:url["'][^>]+content=["']([^"']+)["']/i);
+    return canonicalMatch?.[1] || null;
+}
+function extractUsernameFromUrl(url) {
+    try {
+        const parsed = new URL(url);
+        const path = parsed.pathname.replace(/\/+/g, '/').replace(/\/$/, '');
+        const segments = path.split('/').filter(Boolean);
+        if (segments.length === 0) {
+            return null;
+        }
+        const candidate = segments[segments.length - 1];
+        return candidate.startsWith('@') ? candidate.slice(1) : candidate;
+    }
+    catch {
+        return null;
+    }
+}
+function extractUsernameFromTitle(html) {
+    const match = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+    if (!match) {
+        return null;
+    }
+    const title = match[1];
+    const usernameMatch = title.match(/@([A-Za-z0-9_.-]{1,50})/);
+    return usernameMatch?.[1] || null;
+}
+function detectMissingProfileHtml(html) {
+    if (!html) {
+        return false;
+    }
+    return /(?:page|profile|user|account).{0,30}(?:not found|doesn['’]t exist|cannot find|unavailable|removed|suspended|deleted)/i.test(html);
+}
+function resolveUsernameFromResponse(html, finalUrl) {
+    const canonicalUrl = extractCanonicalUrl(html) || finalUrl;
+    const fromCanonical = extractUsernameFromUrl(canonicalUrl || '');
+    if (fromCanonical) {
+        return fromCanonical;
+    }
+    const fromTitle = extractUsernameFromTitle(html);
+    if (fromTitle) {
+        return fromTitle;
+    }
+    return extractUsernameFromUrl(finalUrl);
+}
+function getUsernameFromApiResponse(platform, data) {
+    if (!data || typeof data !== 'object')
+        return null;
+    if (platform === 'github' && typeof data.login === 'string')
+        return data.login;
+    if (platform === 'twitter' && data.data && typeof data.data.username === 'string')
+        return data.data.username;
+    if (platform === 'instagram' && data.graphql?.user?.username)
+        return data.graphql.user.username;
+    return null;
+}
 function loadExtensionPlatforms() {
     const platforms = {};
     try {
@@ -44,7 +109,7 @@ const BUILT_IN_PLATFORMS = {
     twitter: {
         name: 'Twitter/X',
         url: (username) => `https://twitter.com/${username}`,
-        checkUrl: (username) => `https://api.twitter.com/2/users/by/username/${username}`,
+        checkUrl: (username) => `https://twitter.com/${username}`,
         pattern: /^[a-zA-Z0-9_]{1,15}$/
     },
     github: {
@@ -56,7 +121,7 @@ const BUILT_IN_PLATFORMS = {
     instagram: {
         name: 'Instagram',
         url: (username) => `https://instagram.com/${username}`,
-        checkUrl: (username) => `https://www.instagram.com/api/v1/users/web_profile_info/?username=${username}`,
+        checkUrl: (username) => `https://www.instagram.com/${username}`,
         pattern: /^[a-zA-Z0-9_.]{1,30}$/
     },
     linkedin: {
@@ -74,7 +139,7 @@ const BUILT_IN_PLATFORMS = {
     reddit: {
         name: 'Reddit',
         url: (username) => `https://reddit.com/user/${username}`,
-        checkUrl: (username) => `https://www.reddit.com/user/${username}/about.json`,
+        checkUrl: (username) => `https://www.reddit.com/user/${username}`,
         pattern: /^[a-zA-Z0-9_-]{1,20}$/
     },
     youtube: {
@@ -86,7 +151,7 @@ const BUILT_IN_PLATFORMS = {
     twitch: {
         name: 'Twitch',
         url: (username) => `https://twitch.tv/${username}`,
-        checkUrl: (username) => `https://api.twitch.tv/kraken/users/${username}`,
+        checkUrl: (username) => `https://www.twitch.tv/${username}`,
         pattern: /^[a-zA-Z0-9_]{4,25}$/
     },
     snapchat: {
@@ -97,14 +162,14 @@ const BUILT_IN_PLATFORMS = {
     },
     discord: {
         name: 'Discord',
-        url: (username) => `https://discordapp.com/users/${username}`,
-        checkUrl: (username) => `https://discordapp.com/api/users/${username}`,
+        url: (username) => `https://discord.com/users/${username}`,
+        checkUrl: (username) => `https://discord.com/users/${username}`,
         pattern: /^[a-zA-Z0-9_]{2,32}$/
     },
     mastodon: {
         name: 'Mastodon',
         url: (username) => `https://mastodon.social/@${username}`,
-        checkUrl: (username) => `https://mastodon.social/.well-known/webfinger?resource=acct:${username}@mastodon.social`,
+        checkUrl: (username) => `https://mastodon.social/@${username}`,
         pattern: /^[a-zA-Z0-9_]{1,30}$/
     },
     medium: {
@@ -242,21 +307,24 @@ async function checkProfileExists(platform, username) {
         'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://www.google.com/'
     };
-    const createResult = (responseStatus, exists) => ({
+    const createResult = (responseStatus, exists, finalUrl, note, resolvedUsername) => ({
         platform: platformConfig.name,
         username,
         exists,
         url: publicUrl,
         profileFound: exists,
         statusCode: responseStatus,
-        timestamp: new Date()
+        timestamp: new Date(),
+        redirectedTo: finalUrl && finalUrl !== targetUrl ? finalUrl : undefined,
+        resolvedUsername,
+        note
     });
     const tryRequest = async (method) => {
         return axios({
             method,
             url: targetUrl,
             timeout: 5000,
-            maxRedirects: 5,
+            maxRedirects: 10,
             headers,
             validateStatus: () => true
         });
@@ -268,18 +336,46 @@ async function checkProfileExists(platform, username) {
         }
         else {
             response = await tryRequest('head');
-            if (response.status === 405 || response.status === 403 || response.status === 429 || response.status === 406) {
+            if ([405, 403, 429, 406].includes(response.status)) {
                 response = await tryRequest('get');
             }
         }
-        const exists = response.status >= 200 && response.status < 400;
-        return createResult(response.status, exists);
+        const finalUrl = getFinalResponseUrl(response) || targetUrl;
+        const html = typeof response.data === 'string' ? response.data : '';
+        const resolvedFromApi = getUsernameFromApiResponse(platform, response.data);
+        const resolvedUsername = resolvedFromApi ||
+            resolveUsernameFromResponse(html, finalUrl) ||
+            username;
+        const exists = response.status >= 200 && response.status < 400 && !detectMissingProfileHtml(html);
+        const noteParts = [];
+        if (finalUrl !== targetUrl) {
+            noteParts.push('Redirect resolved to canonical profile URL');
+        }
+        if (resolvedUsername && resolvedUsername !== username) {
+            noteParts.push('Resolved username change from response');
+        }
+        const note = noteParts.length > 0 ? noteParts.join('; ') : undefined;
+        return createResult(response.status, exists, finalUrl, note, resolvedUsername);
     }
     catch (error) {
         try {
             const response = await tryRequest('get');
-            const exists = response.status >= 200 && response.status < 400;
-            return createResult(response.status, exists);
+            const finalUrl = getFinalResponseUrl(response) || targetUrl;
+            const html = typeof response.data === 'string' ? response.data : '';
+            const resolvedFromApi = getUsernameFromApiResponse(platform, response.data);
+            const resolvedUsername = resolvedFromApi ||
+                resolveUsernameFromResponse(html, finalUrl) ||
+                username;
+            const exists = response.status >= 200 && response.status < 400 && !detectMissingProfileHtml(html);
+            const noteParts = [];
+            if (finalUrl !== targetUrl) {
+                noteParts.push('Redirect resolved to canonical profile URL');
+            }
+            if (resolvedUsername && resolvedUsername !== username) {
+                noteParts.push('Resolved username change from response');
+            }
+            const note = noteParts.length > 0 ? noteParts.join('; ') : undefined;
+            return createResult(response.status, exists, finalUrl, note, resolvedUsername);
         }
         catch {
             return {

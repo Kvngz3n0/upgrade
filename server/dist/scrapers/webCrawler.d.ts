@@ -2,6 +2,7 @@ export interface CrawlPage {
     url: string;
     title: string;
     description: string;
+    textContent?: string;
     outgoingLinks: string[];
     depth: number;
     statusCode: number;

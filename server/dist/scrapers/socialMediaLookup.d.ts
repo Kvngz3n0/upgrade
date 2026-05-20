@@ -6,6 +6,9 @@ export interface SocialMediaProfile {
     profileFound: boolean;
     statusCode?: number;
     timestamp: Date;
+    resolvedUsername?: string;
+    redirectedTo?: string;
+    note?: string;
 }
 export interface SocialMediaLookupResult {
     searchedUsername: string;
