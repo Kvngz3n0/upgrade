@@ -31,3 +31,25 @@ npm run start:server
 Visit:
 - Frontend: http://localhost:3000
 - Backend: http://localhost:5000
+
+## Android native setup
+
+To prepare the app for Android with Capacitor:
+
+```bash
+npm run install-android
+```
+
+If you already have Android Studio / Android SDK installed locally, open the native project:
+
+```bash
+npm run android:open
+```
+
+To build a debug APK locally:
+
+```bash
+npm run android:build
+```
+
+This mirrors the same native-capable Android workflow used by the GitHub APK build action.
