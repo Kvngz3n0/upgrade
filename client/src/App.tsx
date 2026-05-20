@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { api } from './api';
 import './App.css';
 import URLInput from './components/URLInput';
 import ScraperSettings from './components/ScraperSettings';
@@ -60,7 +61,7 @@ function App() {
     setResults(null);
 
     try {
-      const response = await axios.post('/api/scrape', {
+      const response = await api.post('/scrape', {
         url: url.trim(),
         includeJS,
         screenshot: includeJS ? screenshot : false,
@@ -86,7 +87,7 @@ function App() {
     setResults(null);
 
     try {
-      const response = await axios.post('/api/scrape', {
+      const response = await api.post('/scrape', {
         url: quickUrl,
         includeJS,
         screenshot: false,

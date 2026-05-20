@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import { api } from '../api';
 import './SearchPanel.css';
 
 interface SearchPanelProps {
@@ -25,7 +26,7 @@ function SearchPanel({ onSearchStart, onSearchComplete }: SearchPanelProps) {
     setError(null);
 
     try {
-      const response = await axios.post('/api/search', {
+      const response = await api.post('/search', {
         query: query.trim(),
         language,
         maxResults

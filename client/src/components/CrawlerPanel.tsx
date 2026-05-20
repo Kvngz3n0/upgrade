@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import axios from 'axios';
+import { api } from '../api';
 import './CrawlerPanel.css';
 
 interface CrawlerPanelProps {
@@ -32,7 +33,7 @@ function CrawlerPanel({ onCrawlStart, onCrawlComplete, engine = 'html', engineOr
     onCrawlStart();
 
     try {
-      const response = await axios.post('/api/crawl', {
+      const response = await api.post('/crawl', {
         url: crawlUrl.trim(),
         maxDepth,
         maxPages,
@@ -67,7 +68,7 @@ function CrawlerPanel({ onCrawlStart, onCrawlComplete, engine = 'html', engineOr
     onCrawlStart();
 
     try {
-      const response = await axios.post('/api/site-search', {
+      const response = await api.post('/site-search', {
         url: crawlUrl.trim(),
         searchTerm: searchTerm.trim(),
         maxDepth,

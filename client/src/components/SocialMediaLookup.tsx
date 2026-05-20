@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import { api } from '../api';
 import './SocialMediaLookup.css';
 
 interface Platform {
@@ -24,7 +25,7 @@ function SocialMediaLookup({ onLookupStart, onLookupComplete }: SocialMediaLooku
   useEffect(() => {
     const fetchPlatforms = async () => {
       try {
-        const response = await axios.get('/api/social-platforms');
+        const response = await api.get('/social-platforms');
         setPlatforms(response.data.platforms);
         // Select all platforms by default
         setSelectedPlatforms(response.data.platforms.map((p: Platform) => p.id));
@@ -54,7 +55,7 @@ function SocialMediaLookup({ onLookupStart, onLookupComplete }: SocialMediaLooku
     onLookupStart();
 
     try {
-      const response = await axios.post('/api/social-lookup', {
+      const response = await api.post('/social-lookup', {
         username: username.trim(),
         platforms: selectedPlatforms
       });
